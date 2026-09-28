@@ -421,7 +421,7 @@
       <button id="addOpBtn" type="button">+</button>
     </div>
 
-    <div class="subhead">Checkpoints</div>
+    <div class="subhead">Checkpoints <span class="hint">(loaded from supervisor page; local list is a backup)</span></div>
     <div id="cpRoster"></div>
     <div class="field" style="margin-top:8px;">
       <div class="row2">
@@ -1056,10 +1056,24 @@ function updateSyncStatus(){
     ? '<b>All synced</b> · '+log.length+' record'+(log.length===1?'':'s')+' this shift'
     : '<b>'+pending+' pending</b> · will retry automatically when online';
 }
+/* Central checkpoint list (managed on the supervisor page) */
+async function syncCheckpoints(){
+  if(!endpoint) return false;
+  try{
+    const url = endpoint + (endpoint.indexOf('?') === -1 ? '?' : '&') + 'format=checkpoints&t=' + Date.now();
+    const res = await fetch(url);
+    const arr = await res.json();
+    if(!Array.isArray(arr)) return false;
+    checkpoints = arr.map(c => ({ tagId:String(c.tagId), label:String(c.label), lat:Number(c.lat), lon:Number(c.lon), radius:Number(c.radius) || 25 }));
+    saveJSON(LS_CPS, checkpoints);
+    return true;
+  }catch(e){ return false; }
+}
 async function syncQueue(){
   if(!endpoint){ toast('Set the endpoint URL in Settings first'); return; }
+  const cpOk = await syncCheckpoints();
   const pending = log.filter(r => r.status !== 'sent');
-  if(pending.length === 0){ toast('Everything is synced'); return; }
+  if(pending.length === 0){ toast(cpOk ? 'Checkpoints updated' : 'Everything is synced'); return; }
   syncBtn.disabled = true; syncBtn.textContent = 'Syncing…';
   for(const rec of pending){
     try{
@@ -1075,6 +1089,7 @@ async function syncQueue(){
 }
 syncBtn.addEventListener('click', syncQueue);
 window.addEventListener('online', ()=>{ if(endpoint) syncQueue(); });
+setInterval(()=>{ if(endpoint && navigator.onLine) syncCheckpoints(); }, 5*60*1000);
 
 /* ================= Settings sheet ================= */
 const settingsOverlay = document.getElementById('settingsOverlay');
@@ -1306,6 +1321,7 @@ document.getElementById('logoTap').addEventListener('click', ()=>{
 /* ================= Init ================= */
 initNfcState();
 routeOnLoad();
+syncCheckpoints();
 </script>
 </body>
 </html>
