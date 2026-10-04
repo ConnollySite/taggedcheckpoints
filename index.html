@@ -207,6 +207,7 @@
     <div class="doc-title">
       <h1>Tagged Check Points</h1>
       <p>Connolly Site · NFC + GPS checkpoint verification</p>
+      <p id="roundGuidance" style="display:none;"></p>
     </div>
   </div>
 </header>
@@ -1066,8 +1067,26 @@ async function syncCheckpoints(){
     if(!Array.isArray(arr)) return false;
     checkpoints = arr.map(c => ({ tagId:String(c.tagId), label:String(c.label), lat:Number(c.lat), lon:Number(c.lon), radius:Number(c.radius) || 25 }));
     saveJSON(LS_CPS, checkpoints);
+    syncGuidance();
     return true;
   }catch(e){ return false; }
+}
+
+/* Expected round frequency, set by the supervisor — shown as guidance only, no alerts tied to it. */
+async function syncGuidance(){
+  if(!endpoint) return;
+  try{
+    const url = endpoint + (endpoint.indexOf('?') === -1 ? '?' : '&') + 'format=guidance&t=' + Date.now();
+    const res = await fetch(url);
+    const d = await res.json();
+    const el = document.getElementById('roundGuidance');
+    if(d && d.roundFrequencyHours){
+      el.textContent = 'Expected round: every ' + d.roundFrequencyHours + ' hour' + (d.roundFrequencyHours === 1 ? '' : 's');
+      el.style.display = 'block';
+    } else {
+      el.style.display = 'none';
+    }
+  }catch(e){ /* keep whatever was last shown */ }
 }
 async function syncQueue(){
   if(!endpoint){ toast('Set the endpoint URL in Settings first'); return; }
