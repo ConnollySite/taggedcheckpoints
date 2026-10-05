@@ -509,7 +509,8 @@ async function checkAccessPin(entered){
 let operatives = loadJSON(LS_OPS, []);      // [{id, name}]
 let checkpoints = loadJSON(LS_CPS, []);     // [{tagId, label, lat, lon, radius}]
 let currentOp = loadJSON(LS_CURRENT_OP, null); // {id, name}
-let endpoint = localStorage.getItem(LS_ENDPOINT) || '';
+const DEFAULT_ENDPOINT = 'https://script.google.com/macros/s/AKfycby3k2IqbX3W-A1-3sqSO5HI7780ewTd40bMOhc144R6-2-HfPxhN8SiZBIu5wgckeHx/exec';
+let endpoint = localStorage.getItem(LS_ENDPOINT) || DEFAULT_ENDPOINT;
 let log = loadJSON(LS_LOG, []);
 let gpsWatchId = null;
 let lastKnownPosition = null;
