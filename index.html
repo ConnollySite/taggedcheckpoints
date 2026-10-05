@@ -246,7 +246,7 @@
         <div class="op-list" id="opList"></div>
       </div>
       <button class="btn-set" id="startShiftBtn" type="button">Start Shift</button>
-      <div class="banner warn hidden" id="noOpsBanner">No security operatives are configured on this device yet. Ask your supervisor to add them via Settings.</div>
+      <div class="banner warn hidden" id="noOpsBanner">No security operatives are available yet. Connect to the internet and tap Sync, or ask your supervisor to add you on the dashboard.</div>
     </div>
   </div>
 
@@ -413,9 +413,9 @@
     </div>
     <button class="sheet-save" id="savePinBtn" type="button">Save PIN</button>
 
-    <div class="subhead">Security Operatives</div>
+    <div class="subhead">Security Operatives <span class="hint">(managed from the supervisor dashboard)</span></div>
     <div id="opRoster"></div>
-    <div class="add-row" style="margin-top:8px;">
+    <div class="add-row" style="margin-top:8px;display:none;">
       <input type="text" id="newOpId" placeholder="ID (e.g. SO-014)" style="max-width:110px;">
       <input type="text" id="newOpName" placeholder="Full name">
       <input type="text" id="newOpPin" inputmode="numeric" maxlength="6" placeholder="PIN (4-6 digits)" style="max-width:130px;">
@@ -670,7 +670,7 @@ function renderOpList(){
 
 document.getElementById('startShiftBtn').addEventListener('click', ()=>{
   if(!selectedOp){ toast('Select your name from the list'); return; }
-  if(selectedOp.pin){
+  if(selectedOp.pin || selectedOp.central){
     document.getElementById('opPinTitle').textContent = 'Enter PIN for ' + selectedOp.name;
     resetOpPinEntry();
     showScreen('opPin');
@@ -689,7 +689,7 @@ function resetOpPinEntry(){
   renderOpPinDots();
 }
 function renderOpPinDots(){
-  const len = selectedOp && selectedOp.pin ? selectedOp.pin.length : 6;
+  const len = selectedOp ? (selectedOp.central ? selectedOp.pinLen : (selectedOp.pin ? selectedOp.pin.length : 6)) : 6;
   opPinDotsEl.innerHTML = '';
   for(let i=0;i<len;i++){
     const dot = document.createElement('i');
@@ -697,26 +697,42 @@ function renderOpPinDots(){
     opPinDotsEl.appendChild(dot);
   }
 }
-document.getElementById('opKeypad').addEventListener('click', (e)=>{
+let opVerifying = false;
+document.getElementById('opKeypad').addEventListener('click', async (e)=>{
   const btn = e.target.closest('button');
-  if(!btn || !selectedOp) return;
+  if(!btn || !selectedOp || opVerifying) return;
   const k = btn.dataset.k;
-  const maxLen = selectedOp.pin.length;
+  const maxLen = selectedOp.central ? selectedOp.pinLen : selectedOp.pin.length;
   if(k === 'clear'){ opPinBuffer = ''; renderOpPinDots(); return; }
   if(k === 'back'){ opPinBuffer = opPinBuffer.slice(0,-1); renderOpPinDots(); return; }
   if(opPinBuffer.length >= maxLen) return;
   opPinBuffer += k;
   renderOpPinDots();
-  if(opPinBuffer.length === maxLen){
-    if(opPinBuffer === selectedOp.pin){
-      currentOp = selectedOp;
-      saveJSON(LS_CURRENT_OP, currentOp);
-      setTimeout(()=>{ showScreen('gpsNotice'); }, 120);
-    } else {
-      opPinDotsEl.classList.add('err');
-      toast('Incorrect PIN');
-      setTimeout(()=>{ opPinBuffer=''; opPinDotsEl.classList.remove('err'); renderOpPinDots(); }, 500);
-    }
+  if(opPinBuffer.length !== maxLen) return;
+
+  const wrong = (msg)=>{
+    opPinDotsEl.classList.add('err');
+    toast(msg || 'Incorrect PIN');
+    setTimeout(()=>{ opPinBuffer=''; opPinDotsEl.classList.remove('err'); renderOpPinDots(); }, 500);
+  };
+  const ok = ()=>{
+    currentOp = { id:selectedOp.id, name:selectedOp.name };
+    saveJSON(LS_CURRENT_OP, currentOp);
+    setTimeout(()=>{ showScreen('gpsNotice'); }, 120);
+  };
+
+  if(selectedOp.central){
+    if(!endpoint || !navigator.onLine){ wrong('Internet needed to sign in'); return; }
+    opVerifying = true;
+    try{
+      const r = await verifyOperativeOnServer(selectedOp.id, opPinBuffer);
+      if(r && r.ok) ok();
+      else if(r && r.locked) wrong('Too many wrong attempts. Wait 10 minutes.');
+      else wrong('Incorrect PIN');
+    }catch(err){ wrong('Could not reach the server. Try again.'); }
+    opVerifying = false;
+  } else {
+    if(opPinBuffer === selectedOp.pin) ok(); else wrong('Incorrect PIN');
   }
 });
 document.getElementById('opPinBackBtn').addEventListener('click', ()=>{
@@ -1068,8 +1084,34 @@ async function syncCheckpoints(){
     checkpoints = arr.map(c => ({ tagId:String(c.tagId), label:String(c.label), lat:Number(c.lat), lon:Number(c.lon), radius:Number(c.radius) || 25 }));
     saveJSON(LS_CPS, checkpoints);
     syncGuidance();
+    syncOperatives();
     return true;
   }catch(e){ return false; }
+}
+
+/* Security operatives are managed on the supervisor dashboard. Phones get names only; PINs are checked on the server. */
+async function syncOperatives(){
+  if(!endpoint) return false;
+  try{
+    const url = endpoint + (endpoint.indexOf('?') === -1 ? '?' : '&') + 'format=operatives&t=' + Date.now();
+    const res = await fetch(url);
+    const arr = await res.json();
+    if(!Array.isArray(arr)) return false;
+    // Nothing set up centrally yet: keep any operatives configured locally on this phone.
+    if(arr.length === 0 && operatives.some(o => !o.central)) return false;
+    operatives = arr.map(o => ({ id:String(o.id), name:String(o.name), pinLen:Number(o.pinLen) || 6, central:true }));
+    saveJSON(LS_OPS, operatives);
+    if(selectedOp && !operatives.some(o => o.id === selectedOp.id)) selectedOp = null;
+    if(!document.getElementById('operativeScreen').classList.contains('hidden')) renderOpList();
+    renderOpRoster();
+    return true;
+  }catch(e){ return false; }
+}
+
+async function verifyOperativeOnServer(id, opPin){
+  const url = endpoint + (endpoint.indexOf('?') === -1 ? '?' : '&') + 'format=opcheck&id=' + encodeURIComponent(id) + '&pin=' + encodeURIComponent(opPin) + '&t=' + Date.now();
+  const res = await fetch(url);
+  return await res.json();
 }
 
 /* Expected round frequency, set by the supervisor — shown as guidance only, no alerts tied to it. */
@@ -1143,7 +1185,7 @@ function renderOpRoster(){
   const el = document.getElementById('opRoster');
   if(operatives.length === 0){ el.innerHTML = '<div class="empty-log">No operatives added yet</div>'; return; }
   el.innerHTML = operatives.map(op =>
-    '<div class="roster-item"><span>'+op.name+' <span class="hint">('+op.id+') · '+(op.pin ? 'PIN set' : 'No PIN')+'</span></span><button class="rm" data-id="'+op.id+'">Remove</button></div>'
+    '<div class="roster-item"><span>'+op.name+' <span class="hint">('+op.id+') · '+(op.central ? 'from dashboard' : (op.pin ? 'PIN set' : 'No PIN'))+'</span></span>'+(op.central ? '' : '<button class="rm" data-id="'+op.id+'">Remove</button>')+'</div>'
   ).join('');
   el.querySelectorAll('.rm').forEach(b=>{
     b.addEventListener('click', ()=>{
