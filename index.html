@@ -406,7 +406,7 @@
     <h3>Device Setup</h3>
     <p class="sub">Supervisor configuration for this device — PIN, security operatives, checkpoints, and backend endpoint.</p>
 
-    <div class="subhead">Access PIN</div>
+    <div class="subhead">Access PIN <span class="hint">(if one is set on the dashboard, that one is used instead)</span></div>
     <div class="field">
       <label for="pinInput">6-digit PIN</label>
       <input type="text" id="pinInput" inputmode="numeric" maxlength="6" placeholder="e.g. 402198">
@@ -494,6 +494,18 @@ function loadJSON(key, fallback){ try{ const v = localStorage.getItem(key); retu
 function saveJSON(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
 
 let pin = localStorage.getItem(LS_PIN) || '';
+const LS_ACCESS = 'tcp_access';                 // {salt, hash} from the dashboard (never the PIN itself)
+let access = loadJSON(LS_ACCESS, null);
+function hasAccessPin(){ return !!((access && access.hash) || pin); }
+async function sha256Hex(str){
+  if(!(window.crypto && crypto.subtle)) throw new Error('no-crypto');
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+async function checkAccessPin(entered){
+  if(access && access.hash) return (await sha256Hex(access.salt + ':' + entered)) === access.hash;
+  return entered === pin;
+}
 let operatives = loadJSON(LS_OPS, []);      // [{id, name}]
 let checkpoints = loadJSON(LS_CPS, []);     // [{tagId, label, lat, lon, radius}]
 let currentOp = loadJSON(LS_CURRENT_OP, null); // {id, name}
@@ -570,7 +582,7 @@ function scheduleConfigured(){
 function startCountdown(){
   stopCountdown();
   const banner = document.getElementById('countdownBanner');
-  if(!scheduleConfigured() || !pin){ banner.classList.add('hidden'); return; }
+  if(!scheduleConfigured() || !hasAccessPin()){ banner.classList.add('hidden'); return; }
   banner.classList.remove('hidden');
   function tick(){
     const next = computeNextPatrolTime(schedule);
@@ -597,7 +609,7 @@ function stopCountdown(){
 }
 
 function routeOnLoad(){
-  if(!pin){
+  if(!hasAccessPin()){
     document.getElementById('setupNote').style.display = 'block';
     document.getElementById('keypad').style.display = 'none';
     showScreen('lock');
@@ -623,7 +635,7 @@ function renderPinDots(){
   pinDotsEl.classList.remove('err');
 }
 
-document.getElementById('keypad').addEventListener('click', (e)=>{
+document.getElementById('keypad').addEventListener('click', async (e)=>{
   const btn = e.target.closest('button');
   if(!btn) return;
   const k = btn.dataset.k;
@@ -633,8 +645,11 @@ document.getElementById('keypad').addEventListener('click', (e)=>{
   pinBuffer += k;
   renderPinDots();
   if(pinBuffer.length === 6){
-    if(pinBuffer === pin){
-      setTimeout(()=>{ showScreen(operatives.length ? 'operative' : 'operative'); }, 120);
+    let good = false;
+    try{ good = await checkAccessPin(pinBuffer); }
+    catch(err){ toast('Open the app over https to sign in'); pinBuffer=''; renderPinDots(); return; }
+    if(good){
+      setTimeout(()=>{ showScreen('operative'); }, 120);
     } else {
       pinDotsEl.classList.add('err');
       toast('Incorrect PIN');
@@ -1085,6 +1100,30 @@ async function syncCheckpoints(){
     saveJSON(LS_CPS, checkpoints);
     syncGuidance();
     syncOperatives();
+    syncAccess();
+    return true;
+  }catch(e){ return false; }
+}
+
+/* Access PIN is set once on the supervisor dashboard. Phones only receive a salted hash of it. */
+async function syncAccess(){
+  if(!endpoint) return false;
+  try{
+    const url = endpoint + (endpoint.indexOf('?') === -1 ? '?' : '&') + 'format=access&t=' + Date.now();
+    const res = await fetch(url);
+    const d = await res.json();
+    if(d && d.hash && d.salt){
+      access = { salt:String(d.salt), hash:String(d.hash) };
+      saveJSON(LS_ACCESS, access);
+    } else if(d && d.hash === null){
+      access = null;
+      localStorage.removeItem(LS_ACCESS);
+    } else { return false; }
+    // A phone that had no PIN yet can now show its keypad.
+    if(hasAccessPin()){
+      document.getElementById('setupNote').style.display = 'none';
+      document.getElementById('keypad').style.display = 'grid';
+    }
     return true;
   }catch(e){ return false; }
 }
