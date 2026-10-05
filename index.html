@@ -245,7 +245,6 @@
         <label>Security Operative <span class="hint">select your name — only you can log under it</span></label>
         <div class="op-list" id="opList"></div>
       </div>
-      <button class="btn-set" id="startShiftBtn" type="button">Start Shift</button>
       <div class="banner warn hidden" id="noOpsBanner">No security operatives are available yet. Connect to the internet and tap Sync, or ask your supervisor to add you on the dashboard.</div>
     </div>
   </div>
@@ -271,11 +270,9 @@
       <div style="width:48px;height:48px;margin:6px auto 12px;color:var(--blue-deep);">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:100%;height:100%;"><path d="M12 22s8-7.58 8-13A8 8 0 0 0 4 9c0 5.42 8 13 8 13z"/><circle cx="12" cy="9" r="2.6"/></svg>
       </div>
-      <h2 style="justify-content:center;"><span class="dot"></span>GPS records</h2>
-      <p style="font-size:14px;color:var(--ink);line-height:1.55;margin:0 0 16px;">
-        This app records GPS positions with your scans. Please keep Location switched on while you are signed in.
-      </p>
-      <button class="btn-set" id="ackGpsBtn" type="button" style="margin-top:4px;">Continue</button>
+      <h2 style="justify-content:center;"><span class="dot"></span>GPS Position</h2>
+      <p id="gpsStatusText" style="font-size:14px;color:var(--ink);line-height:1.55;margin:0 0 16px;">Getting GPS position…</p>
+      <button class="btn-set hidden" id="ackGpsBtn" type="button" style="margin-top:4px;">Try again</button>
       <div class="banner warn hidden" id="gpsDeniedBanner" style="margin-top:12px;">
         Location is switched off. Please switch on Location on your phone, allow it for this browser, then tap Continue.
       </div>
@@ -294,10 +291,7 @@
         </div>
         <button class="btn-ghost" id="endShiftBtn" type="button">End this patrol</button>
       </div>
-      <div class="banner info" style="margin-top:10px;display:flex;align-items:center;gap:8px;">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;"><path d="M12 22s8-7.58 8-13A8 8 0 0 0 4 9c0 5.42 8 13 8 13z"/><circle cx="12" cy="9" r="2.6"/></svg>
-        <span>GPS tracking active — will stop automatically on log off</span>
-      </div>
+
     </div>
 
     <div class="card">
@@ -517,12 +511,12 @@ let countdownTimer = null;
 
 /* ================= Toast ================= */
 let toastTimer = null;
-function toast(msg){
+function toast(msg, ms){
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=>t.classList.remove('show'), 2600);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), ms || 2600);
 }
 
 /* ================= Screen routing ================= */
@@ -532,6 +526,7 @@ const mainApp = document.getElementById('mainApp');
 const actionBar = document.getElementById('actionBar');
 
 function showScreen(name){
+  window.scrollTo(0, 0);
   lockScreen.classList.add('hidden');
   operativeScreen.classList.add('hidden');
   document.getElementById('opPinScreen').classList.add('hidden');
@@ -678,12 +673,13 @@ function renderOpList(){
       list.querySelectorAll('.op-item').forEach(o=>o.classList.remove('selected'));
       el.classList.add('selected');
       selectedOp = operatives.find(o=>o.id === el.dataset.id);
+      chooseOperative();
     });
   });
 }
 
-document.getElementById('startShiftBtn').addEventListener('click', ()=>{
-  if(!selectedOp){ toast('Select your name from the list'); return; }
+function chooseOperative(){
+  if(!selectedOp) return;
   if(selectedOp.pin || selectedOp.central){
     document.getElementById('opPinTitle').textContent = 'Enter PIN for ' + selectedOp.name;
     resetOpPinEntry();
@@ -691,9 +687,26 @@ document.getElementById('startShiftBtn').addEventListener('click', ()=>{
   } else {
     currentOp = selectedOp;
     saveJSON(LS_CURRENT_OP, currentOp);
-    showScreen('gpsNotice');
+    beginPatrol();
   }
-});
+}
+
+/* Patrol starts as soon as the operative is signed in: GPS is switched on here,
+   and the app only waits for the user if Location is off. */
+function beginPatrol(){
+  document.getElementById('gpsDeniedBanner').classList.add('hidden');
+  document.getElementById('ackGpsBtn').classList.add('hidden');
+  document.getElementById('gpsStatusText').classList.remove('hidden');
+  showScreen('gpsNotice');
+  startGpsTracking(true);
+}
+function gpsNeedsSwitchOn(msg){
+  const b = document.getElementById('gpsDeniedBanner');
+  if(msg) b.textContent = msg;
+  b.classList.remove('hidden');
+  document.getElementById('gpsStatusText').classList.add('hidden');
+  document.getElementById('ackGpsBtn').classList.remove('hidden');
+}
 
 /* ================= Operative PIN confirm ================= */
 let opPinBuffer = '';
@@ -732,7 +745,7 @@ document.getElementById('opKeypad').addEventListener('click', async (e)=>{
   const ok = ()=>{
     currentOp = { id:selectedOp.id, name:selectedOp.name };
     saveJSON(LS_CURRENT_OP, currentOp);
-    setTimeout(()=>{ showScreen('gpsNotice'); }, 120);
+    setTimeout(()=>{ beginPatrol(); }, 120);
   };
 
   if(selectedOp.central){
@@ -754,10 +767,7 @@ document.getElementById('opPinBackBtn').addEventListener('click', ()=>{
   showScreen('operative');
 });
 
-document.getElementById('ackGpsBtn').addEventListener('click', ()=>{
-  document.getElementById('gpsDeniedBanner').classList.add('hidden');
-  startGpsTracking(true);
-});
+document.getElementById('ackGpsBtn').addEventListener('click', ()=>{ beginPatrol(); });
 
 document.getElementById('endShiftBtn').addEventListener('click', async ()=>{
   const endingOp = currentOp;
@@ -846,10 +856,7 @@ function checkGeofence(tagId, gps){
 /* ================= Continuous GPS tracking (login → logout) ================= */
 function startGpsTracking(fromNoticeScreen){
   if(!('geolocation' in navigator)){
-    if(fromNoticeScreen){
-      document.getElementById('gpsDeniedBanner').classList.remove('hidden');
-      document.getElementById('gpsDeniedBanner').textContent = 'This browser has no location support. Please open the app in Chrome.';
-    }
+    if(fromNoticeScreen) gpsNeedsSwitchOn('This browser has no location support. Please open the app in Chrome.');
     return;
   }
   if(gpsWatchId !== null) return; // already tracking
@@ -861,13 +868,14 @@ function startGpsTracking(fromNoticeScreen){
       if(fromNoticeScreen){
         fromNoticeScreen = false;
         showScreen('main');
-        toast('GPS tracking active — shift started');
+        toast('GPS Position Active', 3000);
       }
     },
     (err) => {
       if(fromNoticeScreen){
-        document.getElementById('gpsDeniedBanner').classList.remove('hidden');
         stopGpsTracking();
+        if(err && err.code === 3) gpsNeedsSwitchOn('Still looking for a GPS position. Please check Location is switched on, then tap Try again.');
+        else gpsNeedsSwitchOn('Location is switched off. Please switch on Location on your phone, allow it for this browser, then tap Try again.');
         return;
       }
       // Mid-shift: location switched off or permission removed -> ask the user to switch it back on.
@@ -879,7 +887,7 @@ function startGpsTracking(fromNoticeScreen){
         gpsFailCount = 0;
         stopGpsTracking();
         showScreen('gpsNotice');
-        document.getElementById('gpsDeniedBanner').classList.remove('hidden');
+        gpsNeedsSwitchOn('Location is switched off. Please switch on Location on your phone, allow it for this browser, then tap Try again.');
       }
     },
     { enableHighAccuracy:true, maximumAge:4000, timeout:15000 }
