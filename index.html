@@ -1099,9 +1099,6 @@ async function syncCheckpoints(){
     if(!Array.isArray(arr)) return false;
     checkpoints = arr.map(c => ({ tagId:String(c.tagId), label:String(c.label), lat:Number(c.lat), lon:Number(c.lon), radius:Number(c.radius) || 25 }));
     saveJSON(LS_CPS, checkpoints);
-    syncGuidance();
-    syncOperatives();
-    syncAccess();
     return true;
   }catch(e){ return false; }
 }
@@ -1422,7 +1419,7 @@ document.getElementById('logoTap').addEventListener('click', ()=>{
 /* ================= Init ================= */
 initNfcState();
 routeOnLoad();
-syncCheckpoints();
+Promise.all([syncCheckpoints(), syncGuidance(), syncOperatives(), syncAccess()]);
 </script>
 </body>
 </html>
