@@ -271,16 +271,13 @@
       <div style="width:48px;height:48px;margin:6px auto 12px;color:var(--blue-deep);">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:100%;height:100%;"><path d="M12 22s8-7.58 8-13A8 8 0 0 0 4 9c0 5.42 8 13 8 13z"/><circle cx="12" cy="9" r="2.6"/></svg>
       </div>
-      <h2 style="justify-content:center;"><span class="dot"></span>Location Tracking</h2>
-      <p style="font-size:14px;color:var(--ink);line-height:1.55;margin:0 0 6px;">
-        GPS location tracking is being activated now, for your own safety while you are out on patrol alone near the tracks and trains.
+      <h2 style="justify-content:center;"><span class="dot"></span>GPS records</h2>
+      <p style="font-size:14px;color:var(--ink);line-height:1.55;margin:0 0 16px;">
+        This app records GPS positions with your scans. Please keep Location switched on while you are signed in.
       </p>
-      <p style="font-size:12.5px;color:var(--sub);line-height:1.5;margin:0 0 16px;">
-        Your location will be monitored continuously from this point until you log off back in a safe, staffed area. This is not optional and cannot be turned off while signed in.
-      </p>
-      <button class="btn-set" id="ackGpsBtn" type="button" style="margin-top:4px;">I understand — Enable GPS &amp; Start Shift</button>
+      <button class="btn-set" id="ackGpsBtn" type="button" style="margin-top:4px;">Continue</button>
       <div class="banner warn hidden" id="gpsDeniedBanner" style="margin-top:12px;">
-        Location permission was denied or is unavailable. GPS tracking is required to start your shift — please enable location access for this browser and try again.
+        Location is switched off. Please switch on Location on your phone, allow it for this browser, then tap Continue.
       </div>
     </div>
   </div>
@@ -513,6 +510,7 @@ const DEFAULT_ENDPOINT = 'https://script.google.com/macros/s/AKfycby3k2IqbX3W-A1
 let endpoint = localStorage.getItem(LS_ENDPOINT) || DEFAULT_ENDPOINT;
 let log = loadJSON(LS_LOG, []);
 let gpsWatchId = null;
+let gpsFailCount = 0;
 let lastKnownPosition = null;
 let schedule = loadJSON(LS_SCHEDULE, { mode:'interval', intervalMinutes:40, startTime:'01:00', times:[] });
 let countdownTimer = null;
@@ -850,7 +848,7 @@ function startGpsTracking(fromNoticeScreen){
   if(!('geolocation' in navigator)){
     if(fromNoticeScreen){
       document.getElementById('gpsDeniedBanner').classList.remove('hidden');
-      document.getElementById('gpsDeniedBanner').textContent = 'This device/browser has no location support. GPS tracking is required to start your shift.';
+      document.getElementById('gpsDeniedBanner').textContent = 'This browser has no location support. Please open the app in Chrome.';
     }
     return;
   }
@@ -859,6 +857,7 @@ function startGpsTracking(fromNoticeScreen){
   gpsWatchId = navigator.geolocation.watchPosition(
     (pos) => {
       lastKnownPosition = { lat: pos.coords.latitude, lon: pos.coords.longitude, acc: Math.round(pos.coords.accuracy), ts: Date.now() };
+      gpsFailCount = 0;
       if(fromNoticeScreen){
         fromNoticeScreen = false;
         showScreen('main');
@@ -869,6 +868,18 @@ function startGpsTracking(fromNoticeScreen){
       if(fromNoticeScreen){
         document.getElementById('gpsDeniedBanner').classList.remove('hidden');
         stopGpsTracking();
+        return;
+      }
+      // Mid-shift: location switched off or permission removed -> ask the user to switch it back on.
+      // Code 1 = off/denied (act at once). Code 2 = unavailable (act only if it keeps failing,
+      // so a short signal drop at a station does not interrupt anyone). Timeouts are ignored.
+      if(err && err.code === 1){ gpsFailCount = 3; }
+      else if(err && err.code === 2){ gpsFailCount++; }
+      if(gpsFailCount >= 3){
+        gpsFailCount = 0;
+        stopGpsTracking();
+        showScreen('gpsNotice');
+        document.getElementById('gpsDeniedBanner').classList.remove('hidden');
       }
     },
     { enableHighAccuracy:true, maximumAge:4000, timeout:15000 }
