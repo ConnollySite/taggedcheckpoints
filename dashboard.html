@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tagged Check Points - Dashboard</title>
+<meta name="theme-color" content="#0E2A47">
+<style>
+  html, body { margin: 0; height: 100%; background: #F3F6FA; }
+  iframe { border: 0; width: 100%; height: 100%; display: block; }
+</style>
+</head>
+<body>
+<iframe id="f" title="Tagged Check Points" allow="geolocation"></iframe>
+<script>
+  // Opens the supervisor dashboard / live map from the Apps Script backend inside this page.
+  // Inside this page Google's "created by an Apps Script user" banner is not shown.
+  // No PIN or secret is stored here; you still sign in on the dashboard itself.
+  var EXEC = 'https://script.google.com/macros/s/AKfycby3k2IqbX3W-A1-3sqSO5HI7780ewTd40bMOhc144R6-2-HfPxhN8SiZBIu5wgckeHx/exec';
+  var f = document.getElementById('f');
+  function show(view) {
+    f.src = EXEC + (view === 'map' ? '?page=map&embed=1' : '?embed=1');
+    try { history.replaceState(null, '', view === 'map' ? '?view=map' : location.pathname); } catch (e) {}
+  }
+  window.addEventListener('message', function (ev) {
+    if (!/^https:\/\/([a-z0-9-]+\.)*googleusercontent\.com$/.test(ev.origin) && ev.origin !== 'https://script.google.com') return;
+    if (ev.data && ev.data.tcgo === 'map') show('map');
+    else if (ev.data && ev.data.tcgo === 'dash') show('dash');
+  });
+  show(/[?&]view=map/.test(location.search) ? 'map' : 'dash');
+</script>
+</body>
+</html>
