@@ -1,6 +1,6 @@
 {
-  "name": "Tagged Check Points",
-  "short_name": "Check Points",
+  "name": "Connolly Station Duties",
+  "short_name": "Station Duties",
   "description": "Security patrol checkpoint scanning",
   "start_url": "./",
   "scope": "./",

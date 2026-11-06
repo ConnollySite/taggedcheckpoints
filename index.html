@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-<title>Tagged Check Points</title>
+<title>Connolly Station Duties</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -197,7 +197,7 @@
 <meta name="theme-color" content="#0E2340">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Check Points">
+<meta name="apple-mobile-web-app-title" content="Station Duties">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" href="icon-192.png">
 </head>
@@ -212,7 +212,7 @@
       </button>
     </div>
     <div class="doc-title">
-      <h1>Tagged Check Points</h1>
+      <h1>Connolly Station Duties</h1>
       <p>Connolly Site · NFC + GPS checkpoint verification</p>
       <p id="roundGuidance" style="display:none;"></p>
     </div>
@@ -1185,8 +1185,10 @@ async function syncGuidance(){
     const res = await fetch(url);
     const d = await res.json();
     const el = document.getElementById('roundGuidance');
-    if(d && d.roundFrequencyHours){
-      el.textContent = 'Expected round: every ' + d.roundFrequencyHours + ' hour' + (d.roundFrequencyHours === 1 ? '' : 's');
+    const mins = d && (d.roundFrequencyMinutes || (d.roundFrequencyHours ? Math.round(d.roundFrequencyHours * 60) : 0));
+    if(mins){
+      const h = mins / 60;
+      el.textContent = 'Expected round: every ' + (mins >= 60 && mins % 60 === 0 ? h + ' hour' + (h === 1 ? '' : 's') : mins + ' minute' + (mins === 1 ? '' : 's'));
       el.style.display = 'block';
     } else {
       el.style.display = 'none';
@@ -1423,8 +1425,8 @@ document.getElementById('exportBtn').addEventListener('click', ()=>{
   const ws = XLSX.utils.json_to_sheet(rows);
   ws['!cols'] = [ {wch:19},{wch:11},{wch:18},{wch:11},{wch:14},{wch:22},{wch:34},{wch:11},{wch:11},{wch:15},{wch:13},{wch:12},{wch:34},{wch:15},{wch:20},{wch:11} ];
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Tagged Check Points');
-  const filename = 'Tagged_Check_Points_' + new Date().toISOString().slice(0,10) + '.xlsx';
+  XLSX.utils.book_append_sheet(wb, ws, 'Station Duties');
+  const filename = 'Connolly_Station_Duties_' + new Date().toISOString().slice(0,10) + '.xlsx';
   XLSX.writeFile(wb, filename);
   toast('Excel report downloaded');
 });
