@@ -337,6 +337,8 @@
       <button class="scan-btn" id="incidentBtn" type="button" style="background:linear-gradient(135deg,#8a3b2f 0%, var(--red) 100%); box-shadow:0 6px 16px rgba(196,52,31,.3);">Log Incident</button>
     </div>
 
+    <button class="scan-btn" id="trainsBtn" type="button" style="margin:0 0 14px;background:linear-gradient(135deg,#0E2A47 0%, #1A4396 100%);">🚆 Trains · Connolly board</button>
+
     <div class="card">
       <h2><span class="dot off"></span>Today's Log</h2>
       <div id="logList"><div class="empty-log">Nothing logged yet this shift</div></div>
@@ -1455,6 +1457,20 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(function () {});
   });
 }
+</script>
+<!-- Trains: Connolly departures / arrivals, delays and train movements (same page as the Onboard Patrol) -->
+<div id="trainsOv" style="display:none;position:fixed;inset:0;z-index:200;background:#F3F6FA;flex-direction:column;">
+  <div style="display:flex;justify-content:flex-end;padding:calc(8px + env(safe-area-inset-top)) 10px 8px;background:#0E2A47;">
+    <button id="trainsClose" type="button" style="background:#fff;color:#0E2A47;border:0;border-radius:10px;padding:9px 18px;font-weight:800;font-size:15px;">Close</button>
+  </div>
+  <iframe id="trainsFrame" title="Trains" style="flex:1;border:0;width:100%;"></iframe>
+</div>
+<script>
+(function () {
+  var ov = document.getElementById('trainsOv'), fr = document.getElementById('trainsFrame');
+  document.getElementById('trainsBtn').addEventListener('click', function () { fr.src = 'https://connollysite.github.io/onboardpatrol/trains.html'; ov.style.display = 'flex'; });
+  document.getElementById('trainsClose').addEventListener('click', function () { ov.style.display = 'none'; fr.src = 'about:blank'; });
+})();
 </script>
 </body>
 </html>
